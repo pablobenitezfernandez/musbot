@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MusBot - Humano vs Bots</title>
+    <style>
+      :root {
+        --bg: #f4efe4;
+        --paper: #fffaf0;
+        --ink: #1d231f;
+        --accent: #29513d;
+        --accent-soft: #dce9df;
+        --danger: #8f2f2f;
+        --muted: #5e665f;
+        --line: #d7cfbf;
+        --card: #fffdf8;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Georgia", serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(41, 81, 61, 0.12), transparent 28%),
+          linear-gradient(180deg, #f8f3ea 0%, var(--bg) 100%);
+      }
+
+      .page {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .hero,
+      .panel {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        box-shadow: 0 10px 30px rgba(29, 35, 31, 0.08);
+      }
+
+      .hero {
+        padding: 22px 24px;
+        margin-bottom: 20px;
+      }
+
+      .hero-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: flex-start;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        font-weight: 700;
+      }
+
+      h1 {
+        font-size: 30px;
+      }
+
+      .hero p,
+      .status-line,
+      .meta {
+        margin: 8px 0 0;
+        color: var(--muted);
+      }
+
+      .controls-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-top: 18px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 20px;
+      }
+
+      .left-stack,
+      .right-stack {
+        display: grid;
+        gap: 20px;
+      }
+
+      .panel {
+        padding: 18px;
+      }
+
+      .scoreboard {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .score-card {
+        padding: 14px;
+        border-radius: 14px;
+        background: var(--accent-soft);
+      }
+
+      .score-card strong {
+        display: block;
+        font-size: 26px;
+        margin-top: 6px;
+      }
+
+      .players {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .player-box {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px;
+        background: rgba(255, 255, 255, 0.7);
+      }
+
+      .player-box.active {
+        border-color: var(--accent);
+        box-shadow: inset 0 0 0 1px rgba(41, 81, 61, 0.3);
+      }
+
+      .player-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .cards {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .card {
+        width: 92px;
+        min-height: 124px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--card);
+        padding: 10px 8px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .card.hidden {
+        background:
+          linear-gradient(135deg, rgba(41, 81, 61, 0.2), rgba(41, 81, 61, 0.05)),
+          var(--card);
+        color: var(--muted);
+        justify-content: center;
+        align-items: center;
+      }
+
+      .card small {
+        color: var(--muted);
+      }
+
+      .action-list,
+      .history-list,
+      .results-list,
+      .bot-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .action-list button,
+      .inline-form button,
+      .top-actions button,
+      button.primary,
+      button.secondary {
+        appearance: none;
+        border: none;
+        border-radius: 12px;
+        padding: 11px 14px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 15px;
+      }
+
+      button.primary {
+        background: var(--accent);
+        color: white;
+      }
+
+      button.secondary,
+      .action-list button,
+      .inline-form button {
+        background: #e7ded0;
+        color: var(--ink);
+      }
+
+      .inline-form {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-top: 12px;
+      }
+
+      input[type="number"] {
+        width: 110px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: white;
+      }
+
+      .discard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .discard-option {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px;
+        background: #fff;
+      }
+
+      .history-item,
+      .bot-item,
+      .result-item {
+        border-left: 4px solid var(--accent);
+        padding: 10px 12px;
+        background: rgba(41, 81, 61, 0.05);
+        border-radius: 10px;
+      }
+
+      .error {
+        color: var(--danger);
+        margin-top: 10px;
+        min-height: 20px;
+      }
+
+      code {
+        font-family: "Consolas", monospace;
+        font-size: 13px;
+      }
+
+      @media (max-width: 920px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .players {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-top {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <section class="hero">
+        <div class="hero-top">
+          <div>
+            <h1>MusBot · Mano interactiva</h1>
+            <p>
+              Juegas como <strong>j1</strong>. Tu compañero y la pareja rival son bots. La interfaz
+              enseña sus acciones y revela todas las cartas al final de la mano.
+            </p>
+          </div>
+          <div class="meta" id="metaBox">Sin sesión activa.</div>
+        </div>
+        <div class="controls-row top-actions">
+          <label for="botMode">Bots</label>
+          <select id="botMode">
+            <option value="heuristic">Heuristic</option>
+            <option value="mixed">Mixed</option>
+            <option value="random">Random</option>
+          </select>
+          <button class="primary" id="newGameBtn">Nueva mano</button>
+          <button class="secondary" id="refreshBtn">Actualizar estado</button>
+        </div>
+        <div class="status-line" id="statusLine">
+          Pulsa <strong>Nueva mano</strong> para empezar.
+        </div>
+        <div class="error" id="errorBox"></div>
+      </section>
+
+      <div class="grid">
+        <div class="left-stack">
+          <section class="panel">
+            <h2>Marcador</h2>
+            <div class="scoreboard" id="scoreboard"></div>
+          </section>
+
+          <section class="panel">
+            <h2>Mesa</h2>
+            <div class="players" id="players"></div>
+          </section>
+
+          <section class="panel">
+            <h2>Tus acciones</h2>
+            <div class="action-list" id="actionsBox"></div>
+          </section>
+
+          <section class="panel">
+            <h2>Resultados del tanteo</h2>
+            <div class="results-list" id="resultsBox"></div>
+          </section>
+        </div>
+
+        <div class="right-stack">
+          <section class="panel">
+            <h2>Acciones de los bots</h2>
+            <div class="bot-list" id="botActionsBox"></div>
+          </section>
+
+          <section class="panel">
+            <h2>Historial público</h2>
+            <div class="history-list" id="historyBox"></div>
+          </section>
+
+          <section class="panel">
+            <h2>Logs</h2>
+            <div class="meta" id="logPathBox">Sin log todavía.</div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let currentSessionId = null;
+      let currentState = null;
+
+      const statusLine = document.getElementById("statusLine");
+      const errorBox = document.getElementById("errorBox");
+      const scoreboard = document.getElementById("scoreboard");
+      const players = document.getElementById("players");
+      const actionsBox = document.getElementById("actionsBox");
+      const historyBox = document.getElementById("historyBox");
+      const botActionsBox = document.getElementById("botActionsBox");
+      const resultsBox = document.getElementById("resultsBox");
+      const metaBox = document.getElementById("metaBox");
+      const logPathBox = document.getElementById("logPathBox");
+      const botMode = document.getElementById("botMode");
+
+      document.getElementById("newGameBtn").addEventListener("click", () => {
+        startNewGame();
+      });
+
+      document.getElementById("refreshBtn").addEventListener("click", () => {
+        if (!currentSessionId) {
+          setError("No hay sesión activa para actualizar.");
+          return;
+        }
+        fetchState();
+      });
+
+      function setError(message) {
+        errorBox.textContent = message || "";
+      }
+
+      async function api(path, payload = null) {
+        const options = payload
+          ? {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            }
+          : undefined;
+        const response = await fetch(path, options);
+        const data = await response.json();
+        if (!data.ok) {
+          throw new Error(data.error || "Error inesperado");
+        }
+        return data.state;
+      }
+
+      async function startNewGame() {
+        try {
+          setError("");
+          const state = await api("/api/new-game", {
+            bot_mode: botMode.value,
+          });
+          currentSessionId = state.session_id;
+          render(state);
+        } catch (error) {
+          setError(error.message);
+        }
+      }
+
+      async function fetchState() {
+        try {
+          setError("");
+          const response = await fetch(`/api/state?session_id=${encodeURIComponent(currentSessionId)}`);
+          const data = await response.json();
+          if (!data.ok) {
+            throw new Error(data.error || "No se pudo leer el estado.");
+          }
+          render(data.state);
+        } catch (error) {
+          setError(error.message);
+        }
+      }
+
+      async function playAction(action) {
+        if (!currentSessionId) {
+          setError("No hay sesión activa.");
+          return;
+        }
+        try {
+          setError("");
+          const state = await api("/api/action", {
+            session_id: currentSessionId,
+            action,
+          });
+          render(state);
+        } catch (error) {
+          setError(error.message);
+        }
+      }
+
+      function render(state) {
+        currentState = state;
+        currentSessionId = state.session_id;
+        metaBox.innerHTML = `
+          <div><strong>Sesión:</strong> <code>${state.session_id}</code></div>
+          <div><strong>Fase:</strong> ${state.phase}</div>
+          <div><strong>Turno:</strong> ${state.active_player_label || "mano terminada"}</div>
+        `;
+        logPathBox.innerHTML = `<strong>JSONL:</strong> <code>${state.decision_log_path}</code>`;
+        renderStatus(state);
+        renderScoreboard(state);
+        renderPlayers(state);
+        renderActions(state);
+        renderHistory(state);
+        renderBotActions(state);
+        renderResults(state);
+      }
+
+      function renderStatus(state) {
+        if (state.finalized) {
+          statusLine.innerHTML = "La mano ha terminado. Pulsa <strong>Nueva mano</strong> para jugar otra.";
+          return;
+        }
+        if (state.human_can_act) {
+          statusLine.innerHTML = `Te toca jugar en <strong>${state.phase}</strong>.`;
+          return;
+        }
+        statusLine.innerHTML = `Esperando acciones de bots en <strong>${state.phase}</strong>.`;
+      }
+
+      function renderScoreboard(state) {
+        const own = state.scoreboard.equipo_1 ?? 0;
+        const rival = state.scoreboard.equipo_2 ?? 0;
+        const ownGames = state.games_won.equipo_1 ?? 0;
+        const rivalGames = state.games_won.equipo_2 ?? 0;
+        scoreboard.innerHTML = `
+          <div class="score-card">
+            <div>Tu pareja</div>
+            <strong>${own}</strong>
+            <small>Juegos ganados: ${ownGames}</small>
+          </div>
+          <div class="score-card">
+            <div>Pareja rival</div>
+            <strong>${rival}</strong>
+            <small>Juegos ganados: ${rivalGames}</small>
+          </div>
+        `;
+      }
+
+      function renderPlayers(state) {
+        players.innerHTML = state.players
+          .map((player) => {
+            const cards = player.cards
+              .map((card) => {
+                if (card.hidden) {
+                  return `<div class="card hidden">Oculta</div>`;
+                }
+                return `
+                  <div class="card">
+                    <strong>${card.label}</strong>
+                    <small>${card.mus_name} · juego ${card.game_value}</small>
+                  </div>
+                `;
+              })
+              .join("");
+
+            return `
+              <div class="player-box ${player.is_active ? "active" : ""}">
+                <div class="player-meta">
+                  <div>
+                    <strong>${player.player_label}</strong><br />
+                    <small>${player.team_label}</small>
+                  </div>
+                  <small>${player.is_human ? "Humano" : "Bot"}</small>
+                </div>
+                <div class="cards">${cards}</div>
+              </div>
+            `;
+          })
+          .join("");
+      }
+
+      function renderActions(state) {
+        const legal = state.legal_actions || {};
+        if (!state.human_can_act) {
+          actionsBox.innerHTML = `<div class="meta">Ahora mismo no tienes decisiones pendientes.</div>`;
+          return;
+        }
+
+        const simpleButtons = (legal.buttons || [])
+          .map(
+            (button) =>
+              `<button data-action="${button.type}">${button.label}</button>`
+          )
+          .join("");
+
+        let html = simpleButtons;
+
+        if (legal.envite && legal.envite.enabled) {
+          html += `
+            <div class="inline-form">
+              <label for="enviteAmount">Envite</label>
+              <input id="enviteAmount" type="number" min="${legal.envite.min}" max="${legal.envite.max}" value="${legal.envite.min}" />
+              <button id="enviteBtn">Envidar</button>
+            </div>
+          `;
+        }
+
+        if (legal.discard && legal.discard.enabled) {
+          const cards = legal.discard.cards
+            .map(
+              (card, index) => `
+                <label class="discard-option">
+                  <input type="checkbox" value="${index}" />
+                  <strong>${card.label}</strong><br />
+                  <small>${card.mus_name} · juego ${card.game_value}</small>
+                </label>
+              `
+            )
+            .join("");
+          html += `
+            <div class="meta">Selecciona las cartas a descartar.</div>
+            <div class="discard-grid" id="discardGrid">${cards}</div>
+            <div class="inline-form">
+              <button id="discardBtn">Descartar seleccionadas</button>
+            </div>
+          `;
+        }
+
+        if ((legal.raw || []).length) {
+          html += `<div class="meta"><strong>Acciones legales:</strong> <code>${legal.raw.join(" · ")}</code></div>`;
+        }
+
+        actionsBox.innerHTML = html || `<div class="meta">Sin acciones disponibles.</div>`;
+
+        actionsBox.querySelectorAll("button[data-action]").forEach((button) => {
+          button.addEventListener("click", () => {
+            playAction({ type: button.dataset.action });
+          });
+        });
+
+        const enviteBtn = document.getElementById("enviteBtn");
+        if (enviteBtn) {
+          enviteBtn.addEventListener("click", () => {
+            const input = document.getElementById("enviteAmount");
+            playAction({ type: "envidar", amount: Number(input.value) });
+          });
+        }
+
+        const discardBtn = document.getElementById("discardBtn");
+        if (discardBtn) {
+          discardBtn.addEventListener("click", () => {
+            const selected = Array.from(
+              document.querySelectorAll("#discardGrid input:checked")
+            ).map((element) => Number(element.value));
+            playAction({ type: "descartar", indices: selected });
+          });
+        }
+      }
+
+      function renderHistory(state) {
+        historyBox.innerHTML = (state.history || [])
+          .slice()
+          .reverse()
+          .map((entry) => `<div class="history-item"><code>${entry}</code></div>`)
+          .join("");
+      }
+
+      function renderBotActions(state) {
+        const items = state.bot_actions || [];
+        if (!items.length) {
+          botActionsBox.innerHTML = `<div class="meta">Todavía no hay acciones automáticas registradas.</div>`;
+          return;
+        }
+        botActionsBox.innerHTML = items
+          .slice()
+          .reverse()
+          .map(
+            (entry) => `
+              <div class="bot-item">
+                <strong>${entry.player_label}</strong> · ${entry.phase}
+                <div><code>${entry.action}</code></div>
+                <small>${entry.team_label}</small>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      function renderResults(state) {
+        const items = state.results || [];
+        if (!items.length) {
+          resultsBox.innerHTML = `<div class="meta">Los lances cerrados aparecerán aquí.</div>`;
+          return;
+        }
+
+        const summary = [];
+        if (state.game_winner) {
+          summary.push(`<div class="result-item"><strong>Juego cerrado:</strong> ${state.game_winner}</div>`);
+        }
+        if (state.match_winner) {
+          summary.push(`<div class="result-item"><strong>Partida cerrada:</strong> ${state.match_winner}</div>`);
+        }
+
+        resultsBox.innerHTML =
+          summary.join("") +
+          items
+            .map(
+              (entry) => `
+                <div class="result-item">
+                  <strong>${entry.lance}</strong><br />
+                  Gana: ${entry.winner_player_label} (${entry.winner_team_label})<br />
+                  Base: ${entry.points_base} · Apuesta: ${entry.points_bet}<br />
+                  <small>${entry.description}</small>
+                </div>
+              `
+            )
+            .join("");
+      }
+    </script>
+  </body>
+</html>

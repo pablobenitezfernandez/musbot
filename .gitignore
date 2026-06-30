@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.test_artifacts/
+.coverage
+htmlcov/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated data
+data/logs_decisiones/*
+!data/logs_decisiones/.gitkeep
+data/partidas_simuladas/*
+!data/partidas_simuladas/.gitkeep
+data/modelos/*
+!data/modelos/.gitkeep
