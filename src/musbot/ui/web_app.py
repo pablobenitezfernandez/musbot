@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 from musbot.agents.base_agent import BaseAgent
+from musbot.agents.cfr_agent import CFRAgent, cargar_politica_cfr
 from musbot.agents.heuristic_agent import HeuristicAgent
 from musbot.agents.random_agent import RandomAgent
 from musbot.analysis.decision_logger import DecisionLogger, DecisionRecord
@@ -51,6 +52,7 @@ class HumanVsBotSession:
     human_player_id: str = "j1"
     bot_mode: str = "heuristic"
     logs_root: Path = Path("data/logs_decisiones/web")
+    cfr_strategy_path: Path = Path("data/cfr/strategy.json")
     seed: int | None = None
     motor: MotorMus = field(default_factory=MotorMus)
     session_id: str = field(init=False)
@@ -150,9 +152,19 @@ class HumanVsBotSession:
         return self._rng.randint(0, 10_000_000)
 
     def _crear_bots(self) -> dict[str, BaseAgent]:
+        politica_cfr = self._cargar_politica_cfr() if self.bot_mode == "cfr" else None
         bots: dict[str, BaseAgent] = {}
         for player_id in ("j2", "j3", "j4"):
-            if self.bot_mode == "random":
+            if self.bot_mode == "cfr" and politica_cfr is not None:
+                bots[player_id] = CFRAgent(
+                    agent_id=f"cfr_{player_id}",
+                    policy=politica_cfr,
+                    seed=self._rng.randint(0, 10_000_000),
+                )
+            elif self.bot_mode == "cfr":
+                # Sin estrategia entrenada todavía: respaldo prudente al heurístico.
+                bots[player_id] = HeuristicAgent(agent_id=f"heuristic_{player_id}")
+            elif self.bot_mode == "random":
                 bots[player_id] = RandomAgent(
                     agent_id=f"random_{player_id}",
                     seed=self._rng.randint(0, 10_000_000),
@@ -169,6 +181,11 @@ class HumanVsBotSession:
             else:
                 bots[player_id] = HeuristicAgent(agent_id=f"heuristic_{player_id}")
         return bots
+
+    def _cargar_politica_cfr(self) -> dict[str, dict[str, float]] | None:
+        if not self.cfr_strategy_path.is_file():
+            return None
+        return cargar_politica_cfr(self.cfr_strategy_path)
 
     def _autoplay_bots(self) -> None:
         if self.state is None:

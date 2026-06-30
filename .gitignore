@@ -31,3 +31,5 @@ data/partidas_simuladas/*
 !data/partidas_simuladas/.gitkeep
 data/modelos/*
 !data/modelos/.gitkeep
+data/cfr/*
+!data/cfr/.gitkeep

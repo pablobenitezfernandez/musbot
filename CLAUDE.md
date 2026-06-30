@@ -40,9 +40,15 @@ python scripts/train_agent.py --resume-run-id run_0001 --episodes 50
 python scripts/train_agent.py --resume-best --trainer-version tabular_v1 --episodes 50
 python scripts/train_agent.py --fork-from-run-id run_0001 --fork-checkpoint best --episodes 50
 
+# Train a CFR strategy (strongest model; beats the heuristic)
+python scripts/train_cfr.py --iterations 6000 --eval-interval 1500 --eval-hands 500 --output data/cfr/strategy.json
+
 # Evaluate a trained model
 python scripts/evaluate_agent.py --run-id run_0001 --checkpoint best --episodes 100
 python scripts/evaluate_agent.py --run-id run_0001 --checkpoint best --episodes 100 --opponent heuristic
+
+# Evaluate a CFR strategy
+python scripts/evaluate_cfr.py --strategy data/cfr/strategy.json --episodes 1000
 
 # List saved model runs
 python scripts/list_models.py
@@ -91,6 +97,10 @@ All agents extend `BaseAgent` and implement `elegir_accion(acciones_legales, obs
 - `random_agent.py` — `RandomAgent`: uniform random over legal actions.
 - `heuristic_agent.py` — `HeuristicAgent`: rule-based baseline.
 - `rl_agent.py` — `RLAgent`: loads a checkpoint from `data/modelos/` and acts greedily.
+- `cfr_agent.py` — `CFRAgent`: plays the **average strategy** of a CFR run (loaded from
+  `data/cfr/strategy.json`). Randomized policy for imperfect information. Also holds the
+  shared pure functions `infoset_key` and `acciones_abstractas` (the game abstraction),
+  used by both the trainer and the agent so strategy keys match. Always cuts mus.
 
 ### Training (`src/musbot/training/`)
 
@@ -98,6 +108,12 @@ All agents extend `BaseAgent` and implement `elegir_accion(acciones_legales, obs
 - `experiment_manager.py` — `TrainingRunManager`: manages run directories under `data/modelos/run_*/`, saves checkpoints, config, and state JSON.
 - `catalog.py` — `list_model_runs()` / `best_model_run()`: queries saved runs.
 - `evaluate.py` — `evaluate()`: runs episodes against a specified opponent and returns `EvaluationResult`.
+- `cfr.py` — `CFRTrainer` / `entrenar_cfr()`: External-Sampling Monte-Carlo CFR over the
+  betting lances. Mus is always cut (no discards/redeal); chance = the deal, sampled per
+  iteration; payoff = piedras differential (zero-sum). Bets are abstracted to absolute
+  levels (2/6/14) with a raise cap — **required**, since the engine allows +1 raises up to
+  40 and the tree would otherwise explode. Produces an average strategy for `CFRAgent`.
+  This is the strongest model: it beats the heuristic, unlike any tabular variant.
 
 Training supports three opponent modes: `random`, `heuristic`, `mixed`.
 
@@ -139,7 +155,20 @@ Each run saves to `data/modelos/run_XXXX/` with: `config.json`, `state.json`, `m
 ### UI (`src/musbot/ui/`)
 
 - `web_app.py` — HTTP server for human vs. bot play; serves `static/human_vs_bot.html`.
+  Supports `bot_mode` `heuristic` / `random` / `mixed` / `cfr` (the last loads
+  `data/cfr/strategy.json`, falling back to heuristic if absent).
 - `app_streamlit.py` — Streamlit-based alternative UI.
+
+### Training agent & skills (`.claude/`)
+
+A project-level Claude Code agent and skills automate the training workflow:
+
+- Agent `entrenador-mus` (`.claude/agents/`) — RL training engineer. Delegate to it to
+  launch, monitor, evaluate and compare runs; it orchestrates the scripts and reports
+  comparable tables. Spawn it via the Agent tool with `subagent_type: entrenador-mus`.
+- Skills (`.claude/skills/`, invoke with `/<name>`): `entrenar-tabular`, `entrenar-cfr`,
+  `evaluar-modelo`, `comparar-modelos`, `monitorizar-entrenamiento`. Each wraps the
+  relevant script with sane defaults and result-interpretation guidance.
 
 ## Key invariants (from AGENTS.md)
 
