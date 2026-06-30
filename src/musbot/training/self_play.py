@@ -24,22 +24,14 @@ TRAINING_REWARD_SCHEME = EsquemaRecompensas(
     derrota_mano=-1.0,
     empate_mano=0.0,
     factor_diferencial_piedras=0.05,
-    bonus_ganar_juego=0.25,
-    penalizacion_perder_juego=-0.25,
+    bonus_ganar_juego=0.0,
+    penalizacion_perder_juego=0.0,
 )
-ORDAGO_BASE_PENALTY = 0.02
 ORDAGO_SAFE_STRENGTH = 0.95
 ORDAGO_NEAR_CLOSE_SCORE = 36
-ORDAGO_BAD_CONTEXT_BASE = 0.35
-ORDAGO_BAD_CONTEXT_DISTANCE_FACTOR = 0.01
-ORDAGO_BAD_CONTEXT_STRENGTH_FACTOR = 0.40
 AGGRESSIVE_ENVITE_MIN_AMOUNT = 7
 ENVITE_SAFE_STRENGTH = 0.85
 ENVITE_NEAR_CLOSE_SCORE = 34
-ENVITE_BAD_CONTEXT_BASE = 0.05
-ENVITE_BAD_CONTEXT_AMOUNT_FACTOR = 0.02
-ENVITE_BAD_CONTEXT_DISTANCE_FACTOR = 0.005
-ENVITE_BAD_CONTEXT_STRENGTH_FACTOR = 0.25
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +246,7 @@ def entrenar_vs_opponent(
         reward = resultado.reward_by_team["equipo_1"]
         agente.actualizar_desde_experiencias(resultado.trajectories_by_player.get("j1", []), reward)
         agente.actualizar_desde_experiencias(resultado.trajectories_by_player.get("j3", []), reward)
+        agente.decay_epsilon()
         resultados.append(resultado)
 
     return resultados
@@ -353,71 +346,18 @@ def _reward_by_team(
     juegos_finales: Mapping[str, int],
     decision_traces: Sequence[DecisionTrace],
 ) -> dict[str, float]:
-    reward_equipo_1 = calcular_recompensa_terminal(
-        equipo_controlado="equipo_1",
-        equipo_rival="equipo_2",
-        marcador_inicial=marcador_inicial,
-        marcador_final=marcador_final,
-        juegos_iniciales=juegos_iniciales,
-        juegos_finales=juegos_finales,
-        esquema=TRAINING_REWARD_SCHEME,
-    ).total
-    reward_equipo_2 = calcular_recompensa_terminal(
-        equipo_controlado="equipo_2",
-        equipo_rival="equipo_1",
-        marcador_inicial=marcador_inicial,
-        marcador_final=marcador_final,
-        juegos_iniciales=juegos_iniciales,
-        juegos_finales=juegos_finales,
-        esquema=TRAINING_REWARD_SCHEME,
-    ).total
-    ordago_penalties = _ordago_penalties_by_team(decision_traces)
-    envite_penalties = _aggressive_envite_penalties_by_team(decision_traces)
     return {
-        "equipo_1": reward_equipo_1 + ordago_penalties["equipo_1"] + envite_penalties["equipo_1"],
-        "equipo_2": reward_equipo_2 + ordago_penalties["equipo_2"] + envite_penalties["equipo_2"],
+        equipo: calcular_recompensa_terminal(
+            equipo_controlado=equipo,
+            equipo_rival="equipo_2" if equipo == "equipo_1" else "equipo_1",
+            marcador_inicial=marcador_inicial,
+            marcador_final=marcador_final,
+            juegos_iniciales=juegos_iniciales,
+            juegos_finales=juegos_finales,
+            esquema=TRAINING_REWARD_SCHEME,
+        ).total
+        for equipo in ("equipo_1", "equipo_2")
     }
-
-
-def _ordago_penalties_by_team(
-    decision_traces: Sequence[DecisionTrace],
-) -> dict[str, float]:
-    penalties = {"equipo_1": 0.0, "equipo_2": 0.0}
-    for trace in decision_traces:
-        if trace.action_type != AccionMus.ORDAGO.value:
-            continue
-        penalties[trace.team_id] -= _ordago_penalty(trace)
-    return penalties
-
-
-def _aggressive_envite_penalties_by_team(
-    decision_traces: Sequence[DecisionTrace],
-) -> dict[str, float]:
-    penalties = {"equipo_1": 0.0, "equipo_2": 0.0}
-    for trace in decision_traces:
-        penalty = _aggressive_envite_penalty(trace)
-        if penalty <= 0.0:
-            continue
-        penalties[trace.team_id] -= penalty
-    return penalties
-
-
-def _ordago_penalty(trace: DecisionTrace) -> float:
-    if trace.action_type != AccionMus.ORDAGO.value:
-        return 0.0
-    if not _ordago_in_bad_context(trace):
-        return ORDAGO_BASE_PENALTY
-
-    fuerza = 0.0 if trace.lance_strength is None else trace.lance_strength
-    margen = max(trace.score_own, trace.score_rival)
-    distancia_cierre = max(0, ORDAGO_NEAR_CLOSE_SCORE - margen)
-    brecha_fuerza = max(0.0, ORDAGO_SAFE_STRENGTH - fuerza)
-    return (
-        ORDAGO_BASE_PENALTY
-        + ORDAGO_BAD_CONTEXT_BASE
-        + ORDAGO_BAD_CONTEXT_DISTANCE_FACTOR * distancia_cierre
-        + ORDAGO_BAD_CONTEXT_STRENGTH_FACTOR * brecha_fuerza
-    )
 
 
 def _ordago_in_bad_context(trace: DecisionTrace) -> bool:
@@ -428,25 +368,6 @@ def _ordago_in_bad_context(trace: DecisionTrace) -> bool:
     if trace.lance_strength is not None and trace.lance_strength >= ORDAGO_SAFE_STRENGTH:
         return False
     return True
-
-
-def _aggressive_envite_penalty(trace: DecisionTrace) -> float:
-    if not _aggressive_envite_in_bad_context(trace):
-        return 0.0
-
-    if trace.quantity is None:
-        return 0.0
-    fuerza = 0.0 if trace.lance_strength is None else trace.lance_strength
-    margen = max(trace.score_own, trace.score_rival)
-    distancia_cierre = max(0, ENVITE_NEAR_CLOSE_SCORE - margen)
-    brecha_fuerza = max(0.0, ENVITE_SAFE_STRENGTH - fuerza)
-    exceso_envite = max(0, trace.quantity - 5)
-    return (
-        ENVITE_BAD_CONTEXT_BASE
-        + ENVITE_BAD_CONTEXT_AMOUNT_FACTOR * exceso_envite
-        + ENVITE_BAD_CONTEXT_DISTANCE_FACTOR * distancia_cierre
-        + ENVITE_BAD_CONTEXT_STRENGTH_FACTOR * brecha_fuerza
-    )
 
 
 def _aggressive_envite_in_bad_context(trace: DecisionTrace) -> bool:

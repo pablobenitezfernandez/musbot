@@ -9,11 +9,7 @@ from musbot.core.cartas import Carta
 
 @dataclass(slots=True)
 class Jugador:
-    """Estado basico de un jugador.
-
-    TODO: ampliar cuando el reglamento verificado obligue a modelar mano, turno
-    y relacion exacta con el equipo.
-    """
+    """Estado basico de un jugador."""
 
     jugador_id: str
     nombre: str

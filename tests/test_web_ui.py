@@ -19,9 +19,7 @@ def test_web_session_expone_estado_inicial_para_el_humano() -> None:
         assert snapshot["active_player"] == "j1"
         assert snapshot["human_can_act"] is True
         assert snapshot["phase"] == "decision_mus"
-        assert any(
-            button["type"] == "pedir_mus" for button in snapshot["legal_actions"]["buttons"]
-        )
+        assert any(button["type"] == "pedir_mus" for button in snapshot["legal_actions"]["buttons"])
         rivals = [player for player in snapshot["players"] if player["player_id"] != "j1"]
         assert all(player["cards_hidden"] for player in rivals)
 

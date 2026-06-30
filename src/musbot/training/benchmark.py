@@ -60,6 +60,7 @@ def benchmark_trainers(
     checkpoint_interval: int = 10,
     evaluation_interval: int = 10,
     evaluation_hands: int = 20,
+    patience: int = 0,
 ) -> BenchmarkSummary:
     """Entrena y evalua varias familias bajo una configuracion comparable."""
 
@@ -77,6 +78,7 @@ def benchmark_trainers(
                 seed=seed,
                 trainer_version=trainer_version,
                 opponent=training_opponent,
+                patience=patience,
                 notes=(
                     "benchmark:"
                     f" trainer={trainer_version},"

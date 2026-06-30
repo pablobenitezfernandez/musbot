@@ -29,11 +29,7 @@ class Baraja:
 
     @classmethod
     def espanola_40(cls) -> Baraja:
-        """Crea una baraja espanola base de 40 cartas.
-
-        TODO: confirmar con el reglamento oficial que esta composicion es la usada
-        exactamente por la variante de mus objetivo.
-        """
+        """Crea una baraja espanola base de 40 cartas."""
 
         cartas = [
             Carta(figura=figura, palo=palo)

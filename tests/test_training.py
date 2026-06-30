@@ -147,6 +147,7 @@ def test_catalogo_y_registro_de_trainers() -> None:
     assert any(definition.trainer_version == "tabular_v2" for definition in definitions)
     assert any(definition.trainer_version == "tabular_v3" for definition in definitions)
     assert any(definition.trainer_version == "tabular_v4" for definition in definitions)
+    assert any(definition.trainer_version == "tabular_v5" for definition in definitions)
 
     with workspace_tmp_dir() as tmp_path:
         root_dir = tmp_path / "modelos"
@@ -179,6 +180,56 @@ def test_catalogo_y_registro_de_trainers() -> None:
         mejor = best_model_run(root_dir=root_dir, trainer_version="tabular_v1")
         assert mejor is not None
         assert mejor.run_id in {run.run_id for run in runs}
+
+
+def test_training_v5_decae_epsilon_y_registra_metricas() -> None:
+    with workspace_tmp_dir() as tmp_path:
+        root_dir = tmp_path / "modelos"
+
+        resultado = train(
+            root_dir=root_dir,
+            episodes_to_run=20,
+            checkpoint_interval=5,
+            evaluation_interval=5,
+            evaluation_hands=2,
+            seed=51,
+            epsilon=1.0,
+            trainer_version="tabular_v5",
+            patience=0,  # desactiva early stopping para este test
+        )
+
+        manager = TrainingRunManager(root_dir=root_dir)
+        paths, config, state = manager.load_run(resultado.run_id)
+        metricas = manager.read_metrics(paths)
+
+        assert config.trainer_version == "tabular_v5"
+        assert state.total_episodes == 20
+        # epsilon arranca en 1.0 y decae 0.995 por episodio -> debe bajar.
+        assert metricas[-1]["epsilon"] < 1.0
+        assert metricas[-1]["epsilon"] < metricas[0]["epsilon"]
+        assert "states_visited" in metricas[-1]
+
+
+def test_training_early_stopping_para_en_plateau() -> None:
+    with workspace_tmp_dir() as tmp_path:
+        root_dir = tmp_path / "modelos"
+
+        # patience pequeña: si no mejora en 2 evaluaciones consecutivas, para.
+        resultado = train(
+            root_dir=root_dir,
+            episodes_to_run=200,
+            checkpoint_interval=5,
+            evaluation_interval=5,
+            evaluation_hands=2,
+            seed=61,
+            trainer_version="tabular_v5",
+            patience=10,
+        )
+
+        manager = TrainingRunManager(root_dir=root_dir)
+        _, _, state = manager.load_run(resultado.run_id)
+        # Con patience=10 debería parar bastante antes de los 200 episodios.
+        assert state.total_episodes < 200
 
 
 def test_expandir_acciones_para_agente_materializa_envites() -> None:

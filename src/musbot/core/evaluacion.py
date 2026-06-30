@@ -13,7 +13,7 @@ from musbot.core.cartas import Carta
 
 ORDEN_JUEGO: tuple[int, ...] = (31, 32, 40, 37, 36, 35, 34, 33)
 ORDEN_PUNTO: tuple[int, ...] = tuple(range(30, 3, -1))
-RANGO_JUEGO: dict[int, int] = {
+RANK_JUEGO: dict[int, int] = {
     total: len(ORDEN_JUEGO) - indice for indice, total in enumerate(ORDEN_JUEGO)
 }
 RANGO_PUNTO: dict[int, int] = {
@@ -56,7 +56,7 @@ class ResultadoJuego:
 
     @property
     def comparacion(self) -> tuple[int]:
-        return (RANGO_JUEGO[self.total],)
+        return (RANK_JUEGO[self.total],)
 
 
 def evaluar_grande(cartas: Sequence[Carta]) -> tuple[int, ...]:
@@ -139,7 +139,7 @@ def evaluar_juego(cartas: Sequence[Carta]) -> ResultadoJuego | None:
 def evaluar_juego_desde_total(total: int) -> ResultadoJuego | None:
     """Evalua juego a partir del total ya sumado."""
 
-    if total not in RANGO_JUEGO:
+    if total not in RANK_JUEGO:
         return None
     return ResultadoJuego(total=total, puntos=3 if total == 31 else 2)
 
@@ -229,11 +229,11 @@ def fuerza_relativa_pares_desde_valores(valores: Sequence[int]) -> float | None:
 def fuerza_relativa_juego_desde_total(total: int) -> float | None:
     """Fuerza relativa de juego entre 0 y 1, o `None` si no hay juego."""
 
-    if total not in RANGO_JUEGO:
+    if total not in RANK_JUEGO:
         return None
     if len(ORDEN_JUEGO) == 1:
         return 1.0
-    return (RANGO_JUEGO[total] - 1) / (len(ORDEN_JUEGO) - 1)
+    return (RANK_JUEGO[total] - 1) / (len(ORDEN_JUEGO) - 1)
 
 
 def fuerza_relativa_punto_desde_total(total: int) -> float:
@@ -250,10 +250,7 @@ def _build_relative_scores(keys: Sequence[tuple[int, ...]]) -> dict[tuple[int, .
         return {}
     if len(keys) == 1:
         return {keys[0]: 1.0}
-    return {
-        key: indice / (len(keys) - 1)
-        for indice, key in enumerate(sorted(keys))
-    }
+    return {key: indice / (len(keys) - 1) for indice, key in enumerate(sorted(keys))}
 
 
 def _build_grande_scores() -> dict[tuple[int, ...], float]:

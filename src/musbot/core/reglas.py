@@ -31,12 +31,5 @@ class RutasReglas:
 
 
 def cargar_reglas_verificadas() -> None:
-    """Placeholder para futura carga de reglas verificadas.
-
-    TODO: parsear `docs/reglas_extraidas.md` o una fuente estructurada equivalente
-    una vez exista una extraccion fiable del reglamento oficial.
-    """
-
-    raise NotImplementedError(
-        "TODO: cargar reglas verificadas desde docs/reglas_federacion/ y docs/reglas_extraidas.md."
-    )
+    """Sin implementar — las reglas se leen directamente de docs/reglas_extraidas.md."""
+    raise NotImplementedError

@@ -27,6 +27,23 @@ def action_key(accion: LegalAction) -> str:
     return accion.value
 
 
+_FASE_BUCKETS_V5: dict[str, int] = {
+    "decision_mus": 0,
+    "grande": 1,
+    "chica": 2,
+    "pares": 3,
+    "juego": 4,
+    "punto": 5,
+}
+_FUERZA_FIELDS_V5: dict[str, str] = {
+    "grande": "fuerza_grande",
+    "chica": "fuerza_chica",
+    "pares": "fuerza_pares",
+    "juego": "fuerza_juego",
+    "punto": "fuerza_punto",
+}
+
+
 @dataclass(slots=True)
 class RLAgent(BaseAgent):
     """Agente RL tabular minimo.
@@ -75,12 +92,18 @@ class RLAgent(BaseAgent):
         ]
         return self._rng.choice(mejores)
 
+    def decay_epsilon(self, *, decay_rate: float = 0.995, epsilon_min: float = 0.05) -> None:
+        """Decae epsilon multiplicativamente. Llamar una vez por episodio."""
+        self.epsilon = max(epsilon_min, self.epsilon * decay_rate)
+
     def state_key(self, observacion: Observacion) -> str:
         """Resume la observacion en una clave tabular estable."""
 
         if observacion is None:
             return "sin_observacion"
 
+        if self.state_encoder_version == "v5":
+            return self._state_key_v5(observacion)
         if self.state_encoder_version == "v1":
             return self._state_key_v1(observacion)
         if self.state_encoder_version == "v3":
@@ -164,6 +187,59 @@ class RLAgent(BaseAgent):
             )
         )
 
+    def _state_key_v5(self, observacion: Mapping[str, object]) -> str:
+        """Encoder v5: clave compacta para RL tabular (~864 estados teóricos).
+
+        Dimensiones: fase(6) × es_mano(2) × fuerza(3) × pares(2) × juego(2)
+                     × marcador(3) × envite(2) × respondedor(2) = 864.
+
+        Diseño deliberadamente compacto: empíricamente converge mejor por muestra
+        que variantes con más dimensiones, que reparten los datos en demasiados
+        estados y degradan la estimación tabular. Debe mantenerse en sincronía
+        con `ObservacionAgente.compact_key`.
+        """
+        fase = str(observacion.get("fase", "decision_mus"))
+        fase_bucket = _FASE_BUCKETS_V5.get(fase, 0)
+
+        es_mano = int(bool(observacion.get("es_mano")))
+
+        lance = str(observacion.get("lance_actual") or fase)
+        fuerza_key = _FUERZA_FIELDS_V5.get(lance)
+        if fuerza_key:
+            fuerza = float(observacion.get(fuerza_key) or 0.0)
+        else:
+            g = float(observacion.get("fuerza_grande") or 0.0)
+            c = float(observacion.get("fuerza_chica") or 0.0)
+            fuerza = (g + c) / 2
+        fuerza_bucket = 0 if fuerza < 0.4 else (1 if fuerza < 0.75 else 2)
+
+        tiene_pares = int(bool(observacion.get("tiene_pares")))
+        tiene_juego = int(bool(observacion.get("tiene_juego")))
+
+        diferencial = int(observacion.get("diferencial_marcador") or 0)
+        marcador_bucket = 0 if diferencial <= -5 else (2 if diferencial >= 5 else 1)
+
+        envite_bucket = 1 if observacion.get("envite_pendiente") is not None else 0
+
+        respondedor = 0
+        detalle = observacion.get("detalle_envite_pendiente")
+        if isinstance(detalle, Mapping) and detalle.get("me_toca_responder"):
+            respondedor = 1
+
+        return "|".join(
+            str(x)
+            for x in (
+                fase_bucket,
+                es_mano,
+                fuerza_bucket,
+                tiene_pares,
+                tiene_juego,
+                marcador_bucket,
+                envite_bucket,
+                respondedor,
+            )
+        )
+
     def _state_key_v4(self, observacion: Mapping[str, object]) -> str:
         fase = str(observacion.get("fase", "desconocida"))
         lance_actual = str(observacion.get("lance_actual") or fase)
@@ -242,9 +318,11 @@ class RLAgent(BaseAgent):
                     "state_encoder_version",
                     {
                         "tabular_v1": "v1",
+                        "tabular_v2": "v2",
                         "tabular_v3": "v3",
                         "tabular_v4": "v4",
-                    }.get(str(payload.get("version")), "v2"),
+                        "tabular_v5": "v5",
+                    }.get(str(payload.get("version")), "v5"),
                 )
             ),
             model_version=str(payload.get("version", "tabular_v1")),
@@ -551,6 +629,4 @@ class RLAgent(BaseAgent):
         return "evento_otro"
 
     def _effective_learning_rate(self, visit_count: int) -> float:
-        if 0.0 < self.learning_rate <= 1.0:
-            return self.learning_rate
-        return 1.0 / max(visit_count, 1)
+        return 1.0 / (1 + visit_count)

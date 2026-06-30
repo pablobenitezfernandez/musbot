@@ -18,7 +18,7 @@ def main() -> None:
     parser.add_argument("--evaluation-interval", type=int, default=10)
     parser.add_argument("--evaluation-hands", type=int, default=20)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--epsilon", type=float, default=0.1)
+    parser.add_argument("--epsilon", type=float, default=1.0)
     parser.add_argument("--learning-rate", type=float, default=0.1)
     parser.add_argument(
         "--opponent",
@@ -31,6 +31,7 @@ def main() -> None:
     parser.add_argument("--resume-best", action="store_true")
     parser.add_argument("--fork-from-run-id")
     parser.add_argument("--fork-checkpoint", default="latest")
+    parser.add_argument("--patience", type=int, default=300)
     args = parser.parse_args()
 
     if args.list_trainers:
@@ -64,6 +65,7 @@ def main() -> None:
         resume_run_id=resume_run_id,
         fork_from_run_id=args.fork_from_run_id,
         fork_checkpoint=args.fork_checkpoint,
+        patience=args.patience,
     )
     print(f"run_id: {resultado.run_id}")
     print(f"run_dir: {resultado.run_dir}")

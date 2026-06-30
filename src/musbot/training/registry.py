@@ -179,6 +179,25 @@ _TRAINERS: dict[str, TrainerDefinition] = {
         train_fn=_tabular_train,
         eval_fn=_tabular_eval,
     ),
+    "tabular_v5": TrainerDefinition(
+        trainer_version="tabular_v5",
+        label="Tabular v5 (recomendado)",
+        description=(
+            "Encoder compacto con ~864 estados teoricos: fase, fuerza del lance, "
+            "pares/juego, marcador relativo y contexto de envite. "
+            "Learning rate adaptativo 1/(1+n), epsilon decay 0.995/episodio."
+        ),
+        create_agent=lambda config: _create_tabular_agent(
+            config,
+            trainer_version="tabular_v5",
+            state_encoder_version="v5",
+        ),
+        load_agent=_load_tabular_agent,
+        snapshot_agent=_snapshot_tabular_agent,
+        update_count=_tabular_update_count,
+        train_fn=_tabular_train,
+        eval_fn=_tabular_eval,
+    ),
 }
 
 

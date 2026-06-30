@@ -721,7 +721,6 @@ class MotorMus:
 
         if ordago_aceptado:
             descripcion = f"ordago aceptado en {lance.lance.value}"
-            puntos_base = 0
         elif lance.envite_pendiente is None:
             descripcion = f"{lance.lance.value} resuelto en paso"
         else:

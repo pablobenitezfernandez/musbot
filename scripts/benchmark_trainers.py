@@ -30,6 +30,7 @@ def main() -> None:
     parser.add_argument("--checkpoint-interval", type=int, default=10)
     parser.add_argument("--evaluation-interval", type=int, default=10)
     parser.add_argument("--evaluation-hands", type=int, default=20)
+    parser.add_argument("--patience", type=int, default=0)
     args = parser.parse_args()
 
     resumen = benchmark_trainers(
@@ -42,6 +43,7 @@ def main() -> None:
         checkpoint_interval=args.checkpoint_interval,
         evaluation_interval=args.evaluation_interval,
         evaluation_hands=args.evaluation_hands,
+        patience=args.patience,
     )
 
     print("Resultados individuales:")

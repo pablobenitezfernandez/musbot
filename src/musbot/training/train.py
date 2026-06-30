@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import gcd
 from pathlib import Path
 
 from musbot.analysis.model_behavior import write_behavior_report
@@ -34,7 +35,7 @@ def train(
     evaluation_interval: int = 10,
     evaluation_hands: int = 20,
     seed: int = 0,
-    epsilon: float = 0.1,
+    epsilon: float = 1.0,
     learning_rate: float = 0.1,
     opponent: str = "mixed",
     notes: str = "",
@@ -42,6 +43,7 @@ def train(
     resume_run_id: str | None = None,
     fork_from_run_id: str | None = None,
     fork_checkpoint: str = "latest",
+    patience: int = 300,
 ) -> TrainingResult:
     """Entrena o reanuda un agente RL tabular."""
 
@@ -127,22 +129,36 @@ def train(
         )
 
     episodios_iniciales = state.total_episodes
-    resultados = trainer.train_fn(
-        motor,
-        agent,
-        config.episodes_to_run,
-        config.seed + episodios_iniciales,
-        config.opponent,
-    )
+    # Tramo de entrenamiento: el menor comun de los intervalos para que la
+    # evaluacion y el checkpoint reflejen el estado REAL del agente en cada
+    # punto (no el agente final). Asi best_checkpoint y el epsilon registrado
+    # son significativos a lo largo del entrenamiento.
+    paso_tramo = gcd(config.checkpoint_interval, config.evaluation_interval)
+    paso_tramo = max(1, paso_tramo)
 
     acumuladas: list[float] = []
     acumulados_diff: list[int] = []
-    for indice, resultado in enumerate(resultados, start=1):
-        episodio_global = episodios_iniciales + indice
-        reward = resultado.reward_by_team["equipo_1"]
-        diferencial = resultado.score_delta["equipo_1"] - resultado.score_delta["equipo_2"]
-        acumuladas.append(reward)
-        acumulados_diff.append(diferencial)
+    best_win_rate: float = state.best_metric or 0.0
+    episodios_sin_mejora: int = 0
+    parado_por_early_stop: bool = False
+
+    episodios_corridos = 0
+    while episodios_corridos < config.episodes_to_run:
+        tramo = min(paso_tramo, config.episodes_to_run - episodios_corridos)
+        resultados = trainer.train_fn(
+            motor,
+            agent,
+            tramo,
+            config.seed + episodios_iniciales + episodios_corridos,
+            config.opponent,
+        )
+        for resultado in resultados:
+            acumuladas.append(resultado.reward_by_team["equipo_1"])
+            acumulados_diff.append(
+                resultado.score_delta["equipo_1"] - resultado.score_delta["equipo_2"]
+            )
+        episodios_corridos += tramo
+        episodio_global = episodios_iniciales + episodios_corridos
         state.total_episodes = episodio_global
         state.total_updates = trainer.update_count(agent)
 
@@ -155,11 +171,14 @@ def train(
                 config.seed + 100_000 + episodio_global,
                 config.opponent,
             )
+            win_rate = evaluacion["win_rate"]
             metric_record = {
                 "episode": episodio_global,
-                "win_rate": evaluacion["win_rate"],
+                "win_rate": win_rate,
                 "avg_reward": sum(acumuladas) / len(acumuladas),
                 "avg_score_diff": sum(acumulados_diff) / len(acumulados_diff),
+                "epsilon": round(getattr(agent, "epsilon", 0.0), 4),
+                "states_visited": len(getattr(agent, "policy", {})),
             }
             manager.append_metric(paths, metric_record)
             manager.update_summary(paths, config, state, metric_record)
@@ -178,6 +197,23 @@ def train(
             acumuladas.clear()
             acumulados_diff.clear()
 
+            if win_rate > best_win_rate:
+                best_win_rate = win_rate
+                episodios_sin_mejora = 0
+            else:
+                episodios_sin_mejora += config.evaluation_interval
+                if patience > 0 and episodios_sin_mejora >= patience:
+                    parado_por_early_stop = True
+                    manager.save_checkpoint(
+                        paths,
+                        state,
+                        episode=episodio_global,
+                        agent_state=trainer.snapshot_agent(agent),
+                        metric_value=float(win_rate),
+                        metadata={"trainer_version": config.trainer_version, "kind": "early_stop"},
+                    )
+                    break
+
         if episodio_global % config.checkpoint_interval == 0:
             metric_value = None if metric_record is None else float(metric_record["win_rate"])
             manager.save_checkpoint(
@@ -189,7 +225,10 @@ def train(
                 metadata={"trainer_version": config.trainer_version},
             )
 
-    if state.total_episodes and state.total_episodes % config.checkpoint_interval != 0:
+    falta_checkpoint_final = (
+        state.total_episodes and state.total_episodes % config.checkpoint_interval != 0
+    )
+    if not parado_por_early_stop and falta_checkpoint_final:
         ultima_metrica = manager.read_metrics(paths)
         metric_value = None if not ultima_metrica else float(ultima_metrica[-1]["win_rate"])
         manager.save_checkpoint(

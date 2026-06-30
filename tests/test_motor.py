@@ -285,3 +285,108 @@ def test_motor_no_quiero_a_reenvite_devuelve_la_apuesta_anterior() -> None:
     assert resultado.puntos_apuesta == 5
     assert resultado.equipo_apuesta == "equipo_2"
     assert resultado.puntos_base_ganador == 0
+
+
+def test_motor_ordago_aceptado_en_pares_conserva_puntos_propios() -> None:
+    """Ordago aceptado en pares: puntos_base_ganador refleja el valor real de pares."""
+    motor = MotorMus()
+    # j1 (equipo_1): pares de REY (valor 7) → pares=1 punto, gana el lance
+    # j2 (equipo_2): pares de CABALLO (valor 6) → pares=1 punto, pierde ante j1
+    # j3, j4: sin pares
+    manos = {
+        "j1": [
+            Carta(Figura.REY, Palo.OROS),
+            Carta(Figura.REY, Palo.COPAS),
+            Carta(Figura.SIETE, Palo.ESPADAS),
+            Carta(Figura.CUATRO, Palo.BASTOS),
+        ],
+        "j2": [
+            Carta(Figura.CABALLO, Palo.OROS),
+            Carta(Figura.CABALLO, Palo.COPAS),
+            Carta(Figura.CINCO, Palo.ESPADAS),
+            Carta(Figura.SEIS, Palo.BASTOS),
+        ],
+        "j3": [
+            Carta(Figura.SOTA, Palo.OROS),
+            Carta(Figura.SEIS, Palo.COPAS),
+            Carta(Figura.CINCO, Palo.BASTOS),
+            Carta(Figura.SIETE, Palo.OROS),
+        ],
+        "j4": [
+            Carta(Figura.CUATRO, Palo.OROS),
+            Carta(Figura.CINCO, Palo.COPAS),
+            Carta(Figura.SEIS, Palo.ESPADAS),
+            Carta(Figura.AS, Palo.ESPADAS),
+        ],
+    }
+
+    estado = motor.iniciar_partida(manos_iniciales=manos)
+    estado = motor.aplicar_accion(estado, AccionMus.CORTAR_MUS, "j1")
+
+    for jugador_id in ("j1", "j2", "j3", "j4"):
+        estado = motor.aplicar_accion(estado, AccionMus.PASAR, jugador_id)
+
+    for jugador_id in ("j1", "j2", "j3", "j4"):
+        estado = motor.aplicar_accion(estado, AccionMus.PASAR, jugador_id)
+
+    assert estado.fase == FaseMano.PARES
+    estado = motor.aplicar_accion(estado, AccionMus.ORDAGO, "j1")
+    estado = motor.aplicar_accion(estado, AccionMus.QUIERO, "j2")
+
+    resultado = estado.resultados_lances[LanceMus.PARES]
+    assert resultado.ordago_aceptado is True
+    assert resultado.ganador_equipo == "equipo_1"
+    assert resultado.puntos_base_ganador == 1
+
+
+def test_motor_ordago_aceptado_en_juego_31_conserva_puntos_propios() -> None:
+    """Ordago aceptado en juego 31: puntos_base_ganador == 3."""
+    motor = MotorMus()
+    # j1 (equipo_1): AS+REY+REY+REY = 1+10+10+10 = 31 → juego 31 (3 pts), medias de REY → pares auto
+    # j2 (equipo_2): SOTA+CABALLO+SIETE+CUATRO = 10+10+7+4 = 31 → juego 31, j1 gana por turno
+    # j3, j4: sin juego
+    manos = {
+        "j1": [
+            Carta(Figura.AS, Palo.OROS),
+            Carta(Figura.REY, Palo.COPAS),
+            Carta(Figura.REY, Palo.ESPADAS),
+            Carta(Figura.REY, Palo.BASTOS),
+        ],
+        "j2": [
+            Carta(Figura.SOTA, Palo.OROS),
+            Carta(Figura.CABALLO, Palo.COPAS),
+            Carta(Figura.SIETE, Palo.ESPADAS),
+            Carta(Figura.CUATRO, Palo.BASTOS),
+        ],
+        "j3": [
+            Carta(Figura.CUATRO, Palo.OROS),
+            Carta(Figura.CINCO, Palo.COPAS),
+            Carta(Figura.SEIS, Palo.ESPADAS),
+            Carta(Figura.DOS, Palo.BASTOS),
+        ],
+        "j4": [
+            Carta(Figura.CINCO, Palo.OROS),
+            Carta(Figura.SEIS, Palo.COPAS),
+            Carta(Figura.CUATRO, Palo.COPAS),
+            Carta(Figura.SIETE, Palo.OROS),
+        ],
+    }
+
+    estado = motor.iniciar_partida(manos_iniciales=manos)
+    estado = motor.aplicar_accion(estado, AccionMus.CORTAR_MUS, "j1")
+
+    # Pass grande y chica; pares auto-resuelve (solo j1/equipo_1 tiene medias de REY)
+    for jugador_id in ("j1", "j2", "j3", "j4"):
+        estado = motor.aplicar_accion(estado, AccionMus.PASAR, jugador_id)
+
+    for jugador_id in ("j1", "j2", "j3", "j4"):
+        estado = motor.aplicar_accion(estado, AccionMus.PASAR, jugador_id)
+
+    assert estado.fase == FaseMano.JUEGO
+    estado = motor.aplicar_accion(estado, AccionMus.ORDAGO, "j1")
+    estado = motor.aplicar_accion(estado, AccionMus.QUIERO, "j2")
+
+    resultado = estado.resultados_lances[LanceMus.JUEGO]
+    assert resultado.ordago_aceptado is True
+    assert resultado.ganador_equipo == "equipo_1"
+    assert resultado.puntos_base_ganador == 3

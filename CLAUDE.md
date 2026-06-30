@@ -101,8 +101,29 @@ All agents extend `BaseAgent` and implement `elegir_accion(acciones_legales, obs
 
 Training supports three opponent modes: `random`, `heuristic`, `mixed`.
 
-Current trainer variant rankings (benchmarks at 1000 episodes):
-- `tabular_v1` — **current best**; recommended for continued training
+The training loop interleaves training in chunks (gcd of checkpoint/evaluation
+intervals) so that periodic evaluation and `best_checkpoint` reflect the agent's
+state *at that point*, not the final agent. Features: epsilon decay per episode
+(`RLAgent.decay_epsilon`, 0.995/episode down to 0.05; start `epsilon=1.0`),
+adaptive learning rate `1/(1+visits)`, early stopping by plateau (`patience`,
+default 300 episodes; `patience=0` disables it), and metrics including `epsilon`
+and `states_visited` in `metrics.jsonl`. There is **no reward shaping** — the
+reward is terminal only (`±1` + soft score differential); the old hidden ordago/
+envite penalties in `self_play.py` were removed (they hurt training). The
+`_ordago_in_bad_context` / `_aggressive_envite_in_bad_context` helpers remain but
+feed `resumir_decisiones` analytics only, never the reward.
+
+Current trainer variant rankings:
+- `tabular_v5` — **recommended**; compact 8-dim encoder via `ObservacionAgente.compact_key`
+  (~864 theoretical states, ~168 visited). Converges fast and is the most
+  interpretable. ~0.62 vs random, ~0.43-0.47 vs heuristic, ~0.53-0.56 vs mixed
+  (3-seed benchmark / 1000-hand eval). Roughly tied with v1 on win-rate but far
+  simpler and better-conditioned. Enriching the encoder (pares category, juego 31,
+  envite amount) was tried and did **not** help — it splits the data over too many
+  states. The ceiling (~0.47 vs heuristic) is shared by all tabular variants and is
+  a limit of the Monte-Carlo terminal-reward algorithm, not the state encoding.
+  Beating it materially needs a different algorithm (TD/Q-learning bootstrap or DQN).
+- `tabular_v1` — previous best; larger implicit state space, comparable win-rate to v5
 - `tabular_v3` — adds public partner/rival info and history; beats v2 but not v1
 - `tabular_v2` — richer envite context; underperforms v1 overall
 - `tabular_v4` — compact, per-lance strength profile; most interpretable but below v1
