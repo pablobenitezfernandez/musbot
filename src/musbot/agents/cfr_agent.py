@@ -10,6 +10,7 @@ entrenada y la jugada en vivo usen claves o acciones distintas.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,15 +21,22 @@ from musbot.agents.base_agent import BaseAgent, LegalAction, Observacion
 from musbot.env.acciones import AccionLegal, AccionMus
 
 ENVIDAR_CHICO = "envidar_chico"
+# OBSOLETO: reservado para una posible abstracción de apuesta "media" (chico/
+# medio/grande). Sin uso: `acciones_abstractas` solo emite chico y grande.
+ENVIDAR_MEDIO = "envidar_medio"
 ENVIDAR_GRANDE = "envidar_grande"
+# Tope de rondas de mus modeladas por CFR. Acota el árbol (el mus puede repetirse
+# indefinidamente si todos piden) y evita bucles en juego con infosets no vistos.
+MAX_RONDAS_MUS = 2
 # Niveles ABSOLUTOS de apuesta de la abstraccion. Solo se permite subir a un
 # nivel estrictamente superior al pendiente, lo que acota el numero de subidas
 # por lance (a lo sumo len(_NIVELES_ENVITE)) y mantiene finito el arbol de CFR.
 # Sin esto, el motor admite subir de 1 en 1 hasta 40 y el arbol explota.
-_NIVELES_ENVITE: tuple[int, ...] = (2, 6, 14)
+_NIVELES_ENVITE: tuple[int, ...] = (2, 5, 10, 20)
 
 _FASE_BUCKETS: dict[str, int] = {
     "decision_mus": 0,
+    "descarte": 6,
     "grande": 1,
     "chica": 2,
     "pares": 3,
@@ -92,6 +100,54 @@ def acciones_abstractas(
                 abstractas.append((ENVIDAR_GRANDE, AccionLegal.envidar(grande - pendiente)))
 
     return abstractas
+
+
+def acciones_descarte_abstractas(
+    valores_mus: Sequence[int],
+) -> list[tuple[str, tuple[int, ...]]]:
+    """Menú abstracto de descartes para que CFR aprenda QUÉ tirar (no solo si mus).
+
+    Como en las apuestas, se colapsan los 16 subconjuntos posibles en unos pocos
+    patrones con sentido estratégico, conservando siempre las parejas:
+    - `descartar_bajas`: tira las cartas bajas sueltas → conserva altas (grande/juego).
+    - `descartar_altas`: tira las cartas altas sueltas → conserva bajas (chica).
+    - `descartar_todo`: mano nueva completa.
+    CFR elige el patrón según la forma de la mano. Determinista: entrenador y
+    agente generan el mismo menú, así las claves de estrategia coinciden.
+    """
+
+    valores = [int(v) for v in valores_mus]
+    n = len(valores)
+    if n == 0:
+        return [("descartar_todo", ())]
+
+    frecuencias = Counter(valores)
+    sueltas = [i for i, v in enumerate(valores) if frecuencias[v] < 2]
+    bajas = tuple(i for i in sueltas if valores[i] <= 3)
+    altas = tuple(i for i in sueltas if valores[i] >= 4)
+    todo = tuple(range(n))
+
+    opciones: list[tuple[str, tuple[int, ...]]] = []
+    vistos: set[tuple[int, ...]] = set()
+    for label, indices in (
+        ("descartar_bajas", bajas),
+        ("descartar_altas", altas),
+        ("descartar_todo", todo),
+    ):
+        if indices and indices not in vistos:
+            vistos.add(indices)
+            opciones.append((label, indices))
+    return opciones
+
+
+def rondas_mus_jugadas(obs: Observacion) -> int:
+    """Rondas de mus ya completadas, inferidas del historial público."""
+
+    historial = obs.get("historial_publico") if obs else None
+    if not isinstance(historial, Sequence):
+        return 0
+    descartes = sum(1 for evento in historial if ":descarta:" in str(evento))
+    return descartes // 4  # 4 descartes (uno por jugador) por ronda completa
 
 
 def _fuerza_lance(obs: Mapping[str, object]) -> float:
@@ -213,14 +269,15 @@ def muestrear_label(probabilidades: Mapping[str, float], rng: Random) -> str:
 class CFRAgent(BaseAgent):
     """Juega la estrategia media de un entrenamiento CFR.
 
-    Mantiene la coherencia con el entrenamiento: corta el mus siempre (la fase de
-    mus se excluye de la abstracción CFR) y juega las apuestas muestreando la
-    estrategia media del information set correspondiente.
+    Coherente con el entrenamiento. Por defecto (`modelar_mus=False`) corta el mus
+    siempre (modelo rápido y probado). Si se entrenó modelando el mus, decide
+    pedir/cortar y qué descartar con la estrategia aprendida.
     """
 
     policy: dict[str, dict[str, float]] = field(default_factory=dict)
     seed: int | None = None
     model_version: str = "cfr_v1"
+    modelar_mus: bool = False
     _rng: Random = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -235,10 +292,29 @@ class CFRAgent(BaseAgent):
         if not opciones:
             raise ValueError("El agente CFR necesita al menos una accion legal.")
 
-        # Fase de mus: el CFR no la modela; corta siempre (auto-consistente).
-        cortar = next((a for a in opciones if a.tipo is AccionMus.CORTAR_MUS), None)
-        if cortar is not None and any(a.tipo is AccionMus.PEDIR_MUS for a in opciones):
-            return cortar
+        # Modelo por defecto: no se modela el mus, se corta siempre.
+        if not self.modelar_mus:
+            cortar = next((a for a in opciones if a.tipo is AccionMus.CORTAR_MUS), None)
+            if cortar is not None:
+                return cortar
+
+        # Fase de descarte: CFR elige el patrón de descarte del menú abstracto.
+        if all(a.tipo is AccionMus.DESCARTAR for a in opciones):
+            valores = (observacion.get("valores_mus") if observacion else None) or ()
+            menu = acciones_descarte_abstractas(valores)
+            if len(menu) <= 1:
+                return AccionLegal.descartar(menu[0][1] if menu else ())
+            etiquetas = [label for label, _ in menu]
+            clave = infoset_key(observacion)
+            probs = probabilidades_desde_politica(self.policy.get(clave), etiquetas)
+            elegido = muestrear_label(probs, self._rng)
+            return AccionLegal.descartar(dict(menu)[elegido])
+
+        # Decisión de mus: si se alcanzó el tope de rondas, cortar; si no, el CFR
+        # decide pedir/cortar como un information set normal (más abajo).
+        if any(a.tipo is AccionMus.PEDIR_MUS for a in opciones):
+            if rondas_mus_jugadas(observacion) >= MAX_RONDAS_MUS:
+                return next(a for a in opciones if a.tipo is AccionMus.CORTAR_MUS)
 
         abstractas = acciones_abstractas(opciones, observacion)
         if not abstractas:
@@ -257,6 +333,7 @@ class CFRAgent(BaseAgent):
             "agent_id": self.agent_id,
             "seed": self.seed,
             "version": self.model_version,
+            "modelar_mus": self.modelar_mus,
             "policy": self.policy,
         }
 
@@ -266,6 +343,7 @@ class CFRAgent(BaseAgent):
             agent_id=str(payload.get("agent_id", "cfr_main")),
             seed=payload.get("seed"),
             model_version=str(payload.get("version", "cfr_v1")),
+            modelar_mus=bool(payload.get("modelar_mus", False)),
             policy=_normalizar_politica(payload.get("policy", {})),
         )
 

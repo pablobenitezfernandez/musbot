@@ -20,10 +20,19 @@ def main() -> None:
     parser.add_argument("--eval-hands", type=int, default=500)
     parser.add_argument("--eval-seed", type=int, default=777)
     parser.add_argument("--output", default="data/cfr/strategy.json")
+    parser.add_argument("--modelar-mus", action="store_true")
     args = parser.parse_args()
 
     motor = MotorMus()
-    trainer = CFRTrainer(motor=motor)
+    trainer = CFRTrainer(motor=motor, modelar_mus=args.modelar_mus)
+    salida = Path(args.output)
+    salida.parent.mkdir(parents=True, exist_ok=True)
+
+    def guardar() -> int:
+        payload = trainer.build_agent(seed=args.eval_seed).to_state_dict()
+        payload["iterations"] = trainer.iterations
+        salida.write_text(json.dumps(payload), encoding="utf-8")
+        return len(payload["policy"])
 
     hechas = 0
     t0 = time.time()
@@ -38,20 +47,16 @@ def main() -> None:
             )["win_rate"]
             for opp in ("random", "heuristic", "mixed")
         }
+        n_infosets = guardar()  # guardado periódico: una corrida larga es segura
         elapsed = time.time() - t0
         print(
-            f"iter={hechas} | infosets={len(trainer.strategy_sum)} | "
+            f"iter={hechas} | infosets={n_infosets} | "
             f"random={marcas['random']:.3f} heuristic={marcas['heuristic']:.3f} "
             f"mixed={marcas['mixed']:.3f} | {elapsed:.0f}s",
             flush=True,
         )
 
-    salida = Path(args.output)
-    salida.parent.mkdir(parents=True, exist_ok=True)
-    payload = trainer.build_agent(seed=args.eval_seed).to_state_dict()
-    payload["iterations"] = trainer.iterations
-    salida.write_text(json.dumps(payload), encoding="utf-8")
-    print(f"Estrategia guardada en {salida} ({len(payload['policy'])} information sets).")
+    print(f"Estrategia guardada en {salida} ({guardar()} information sets).")
 
 
 if __name__ == "__main__":
