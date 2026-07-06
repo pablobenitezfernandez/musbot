@@ -21,8 +21,10 @@ from musbot.agents.base_agent import BaseAgent, LegalAction, Observacion
 from musbot.env.acciones import AccionLegal, AccionMus
 
 ENVIDAR_CHICO = "envidar_chico"
-# OBSOLETO: reservado para una posible abstracción de apuesta "media" (chico/
-# medio/grande). Sin uso: `acciones_abstractas` solo emite chico y grande.
+# TODO(deprecar): constante SIN USO. Reservada para una posible abstracción de
+# apuesta "media" (chico/medio/grande); hoy `acciones_abstractas` solo emite
+# chico y grande. Decisión pendiente: cablearla en la abstracción o eliminarla.
+# No borrar hasta tomar esa decisión.
 ENVIDAR_MEDIO = "envidar_medio"
 ENVIDAR_GRANDE = "envidar_grande"
 # Tope de rondas de mus modeladas por CFR. Acota el árbol (el mus puede repetirse
